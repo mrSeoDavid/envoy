@@ -19,8 +19,6 @@
 #include "common/network/address_impl.h"
 #include "common/network/utility.h"
 
-const size_t NO_VALUE_ASSIGNED = 99999;
-
 namespace Envoy {
 namespace Extensions {
 namespace ListenerFilters {
@@ -46,7 +44,7 @@ Network::FilterStatus Filter::onAccept(Network::ListenerFilterCallbacks& cb) {
 void Filter::onRead() {
     ProxyState status = onReadWorker();
 
-    if(state == ProxyState::PrtclFail){
+    if(state == ProxyState::ProtocolFail){
         config_->stats_.downstream_cx_proxy_proto_error_.inc();
         cb_->continueFilterChain(false);
     }
@@ -74,13 +72,13 @@ ProxyState Filter::onReadWorker() {
     if (remote_version != proxy_protocol_header_.value().protocol_version_ ||
         local_version != proxy_protocol_header_.value().protocol_version_) {
         ENVOY_LOG(debug, "failed to read proxy protocol");
-        return ProxyState::PrtclFail;
+        return ProxyState::ProtocolFail;
     }
-    // Check that both addresses are valid unicast addresses, as required for TCP
+    // Check that both addresses are valid unicast addresses, as required for TCP.
     if (!proxy_protocol_header_.value().remote_address_->ip()->isUnicastAddress() ||
         !proxy_protocol_header_.value().local_address_->ip()->isUnicastAddress()) {
         ENVOY_LOG(debug, "failed to read proxy protocol");
-        return ProxyState::PrtclFail;
+        return ProxyState::ProtocolFail;
     }
 
     // Only set the local address if it really changed, and mark it as address being restored.
@@ -101,7 +99,7 @@ absl::optional<size_t> Filter::lenV2Address(char* buf) {
   size_t len;
 
   if ((ver_cmd & 0xf) == PROXY_PROTO_V2_LOCAL) {
-    // According to the spec there is no address encoded, len=0, and we must ignore
+    // According to the spec there is no address encoded, len=0, and we must ignore.
     return 0;
   }
 
@@ -126,7 +124,7 @@ ProxyState Filter::parseV2Header(char* buf) {
   size_t hdr_addr_len = (upper_byte << 8) + lower_byte;
 
   if ((ver_cmd & 0xf) == PROXY_PROTO_V2_LOCAL) {
-    // This is locally-initiated, e.g. health-check, and should not override remote address
+    // This is locally-initiated, e.g. health-check, and should not override remote address.
     proxy_protocol_header_.emplace(WireHeader{hdr_addr_len});
     return ProxyState::Done;
   }
@@ -204,7 +202,7 @@ ProxyState Filter::parseV1Header(char* buf, size_t len) {
   const auto line_parts = StringUtil::splitToken(trimmed_proxy_line, " ", true);
   if (line_parts.size() < 2 || line_parts[0] != "PROXY") {
       ENVOY_LOG(debug, "failed to read proxy protocol");
-      return ProxyState::PrtclFail;
+      return ProxyState::ProtocolFail;
   }
 
   // If the line starts with UNKNOWN we know it's a proxy protocol line, so we can remove it from
@@ -214,7 +212,7 @@ ProxyState Filter::parseV1Header(char* buf, size_t len) {
     // If protocol not UNKNOWN, src and dst addresses have to be present.
     if (line_parts.size() != 6) {
         ENVOY_LOG(debug, "failed to read proxy protocol");
-        return ProxyState::PrtclFail;
+        return ProxyState::ProtocolFail;
     }
 
     // TODO(gsagula): parseInternetAddressAndPort() could be modified to take two string_view
@@ -235,7 +233,7 @@ ProxyState Filter::parseV1Header(char* buf, size_t len) {
                          "[" + std::string{line_parts[3]} + "]:" + std::string{line_parts[5]})});
     } else {
         ENVOY_LOG(debug, "failed to read proxy protocol");
-        return ProxyState::PrtclFail;
+        return ProxyState::ProtocolFail;
     }
   }
   return ProxyState::Done;
@@ -245,7 +243,7 @@ bool Filter::parseExtensions(os_fd_t fd) {
   // If we ever implement extensions elsewhere, be sure to
   // continue to skip and ignore those for LOCAL.
   while (proxy_protocol_header_.value().extensions_length_) {
-    // buf_ is no longer in use so we re-use it to read/discard
+    // buf_ is no longer in use so we re-use it to read/discard.
     int bytes_avail;
     auto& os_syscalls = Api::OsSysCallsSingleton::get();
     if (os_syscalls.ioctl(fd, FIONREAD, &bytes_avail).rc_ < 0) {
@@ -297,7 +295,7 @@ bool Filter::readProxyHeader(os_fd_t fd) {
       if (!memcmp(buf_, sig, PROXY_PROTO_V2_SIGNATURE_LEN)) {
         header_version_ = V2;
       } else if (memcmp(buf_, PROXY_PROTO_V1_SIGNATURE, PROXY_PROTO_V1_SIGNATURE_LEN)) {
-        // It is not v2, and can't be v1, so no sense hanging around: it is invalid
+        // It is not v2, and can't be v1, so no sense hanging around: it is invalid.
           ENVOY_LOG(debug, "failed to read proxy protocol (exceed max v1 header len)");
           return false;
       }
@@ -319,9 +317,8 @@ bool Filter::readProxyHeader(os_fd_t fd) {
         buf_off_ += read_result.rc_;
         nread -= read_result.rc_;
       }
-      ssize_t addr_len = lenV2Address(buf_).value_or(NO_VALUE_ASSIGNED);
-      //if a nullopt is returned, false is returned and break out of the method
-      if(len = NO_VALUE_ASSIGNED){
+      // if a nullopt is returned, false is returned and break out of the method.
+      if(!lenV2Address(buf_).has_value()){
         return false;
       }
 
@@ -342,7 +339,7 @@ bool Filter::readProxyHeader(os_fd_t fd) {
         }
         buf_off_ += read_result.rc_;
         ProxyState status = parseV2Header(buf_);
-        //if an error occurred in the method, return false and break out of the method
+        // if an error occurred in the method, return false and break out of the method.
         if(status == ProxyState::UnsupportedCd){
             return false;
         }
@@ -359,11 +356,11 @@ bool Filter::readProxyHeader(os_fd_t fd) {
         buf_off_ += nread;
       }
     } else {
-      // continue searching buf_ from where we left off
+      // continue searching buf_ from where we left off.
       for (; search_index_ < buf_off_ + nread; search_index_++) {
         if (buf_[search_index_] == '\n' && buf_[search_index_ - 1] == '\r') {
           if (search_index_ == 1) {
-            // This could be the binary protocol. It cannot be the ascii protocol
+            // This could be the binary protocol. It cannot be the ascii protocol.
             header_version_ = InProgress;
           } else {
             header_version_ = V1;
@@ -376,7 +373,7 @@ bool Filter::readProxyHeader(os_fd_t fd) {
       // If we bailed on the first char, we might be v2, but are for sure not v1. Thus we
       // can read up to min(PROXY_PROTO_V2_HEADER_LEN, bytes_avail). If we bailed after first
       // char, but before we hit \r\n, read up to search_index_. We're asking only for
-      // bytes we've already seen so there should be no block or fail
+      // bytes we've already seen so there should be no block or fail.
       size_t ntoread;
       if (header_version_ == InProgress) {
         ntoread = bytes_avail;
@@ -392,8 +389,8 @@ bool Filter::readProxyHeader(os_fd_t fd) {
 
       if (header_version_ == V1) {
         ProxyState status = parseV1Header(buf_, buf_off_);
-        //if calling parseV1Header produces an error, return false and break out of the method
-        if(status == ProxyState::PrtclFail){
+        // if calling parseV1Header produces an error, return false and break out of the method.
+        if(status == ProxyState::ProtocolFail){
             return false;
         }
         return true;

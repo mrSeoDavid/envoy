@@ -43,14 +43,15 @@ using ConfigSharedPtr = std::shared_ptr<Config>;
 
 enum ProxyProtocolVersion { Unknown = -1, InProgress = -2, V1 = 1, V2 = 2 };
 
+// These enum values are used to tell if different fails are detected in the .cc file.
 enum class ProxyState{
-    //failed to read proxy protocol
-    PrtclFail,
+    // failed to read proxy protocol.
+    ProtocolFail,
 
-    //Unsupported command or address family or transport
+    // unsupported command or address family or transport.
     UnsupportedCd,
 
-    //the method's job is over
+    // the method's job is over.
     Done,
 };
 
