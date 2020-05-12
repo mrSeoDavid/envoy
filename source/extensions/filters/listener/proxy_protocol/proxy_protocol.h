@@ -50,7 +50,7 @@ enum class ProxyState{
 
     // unsupported command or address family or transport.
     UnsupportedCd,
-
+ 
     // the method's job is over.
     Done,
 };

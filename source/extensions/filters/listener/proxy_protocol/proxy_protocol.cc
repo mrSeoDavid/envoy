@@ -389,7 +389,7 @@ bool Filter::readProxyHeader(os_fd_t fd) {
 
       if (header_version_ == V1) {
         ProxyState status = parseV1Header(buf_, buf_off_);
-        // if calling parseV1Header produces an error, return false and break out of the method.
+        // If calling parseV1Header produces an error, return false and break out of the method.
         if(status == ProxyState::ProtocolFail){
             return false;
         }
